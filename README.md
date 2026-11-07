@@ -109,18 +109,3 @@ WHERE churn_score > 0.80 AND run_date = CURRENT_DATE
 ORDER BY churn_score DESC LIMIT 50;
 ```
 
-## Limitations
-
-1. Manual validation of predictions
-2. Very high base churn (66%)
-3. Channel volatility
-4. Recent deposit/withdrawal impact
-5. Operational constraint: 50 contacts/day
-
-## Next Steps
-
-- A/B test: contact impact on conversion
-- Redshift for daily update (vs weekly)
-- Dynamic threshold by capacity
-- Feature importance for churn drivers
-
