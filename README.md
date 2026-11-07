@@ -1,193 +1,126 @@
-# Churn Gaming — Predicción de Abandono en Casino Virtual
+# Churn Gaming — Gaming Casino Abandonment Prediction
 
-Modelo LightGBM que predice cada lunes cuál de los ~12K jugadores activos en gaming abandonará la plataforma la próxima semana. Permite contacto preventivo antes del churn con presición del 89-92% en críticos.
+LightGBM model that predicts each Monday which of ~12K active gaming players will abandon the platform next week. Preventive contact with 89-92% precision in critical cases.
 
-**Estado:** En producción | **Schedule:** Lunes 13:00 UTC (08:00 Lima) | **AUC:** 0.8745
+**Status:** In production | **Schedule:** Monday 13:00 UTC (08:00 Lima) | **AUC:** 0.8745 | **Base Churn:** 66%
 
----
+## Executive Summary
 
-## Resumen Ejecutivo
+- **AUC:** 0.8745 in real temporal validation (8 weeks walk-forward)
+- **Critical detected:** ~8,500 of 12K active players/week
+- **Precision in critical:** 89-92%
+- **Operational capacity:** 50 contacts/day prioritized
 
-Modelo que alcanza un **AUC de 0.8745** en validación temporal real (8 semanas) con walk-forward testing. Detecta **~8,500 jugadores de alto riesgo** cada semana de 12K activos. **Precisión en críticos: 89-92%**, permitiendo priorización operativa de solo 50 contactos/día. Churn base es ~66% semanal (2 de cada 3 gaming-players desaparecen).
+![Churn Gaming Graphics](./graficos_churn_gaming.png)
 
----
+## Problem and Context
 
-## Problema y Contexto
+Gaming has extremely high churn (~66% weekly) with volatile patterns. Requires:
+1. 7-day ahead prediction
+2. Preventive contact before abandonment
+3. Prioritization: only 50 possible contacts/day
+4. Impact: 1% churn reduction = +S/ 80K/month
 
-Gaming tiene altísimo churn (~66% semanal) con patrones diferentes a AADD/deportes:
+## Exploratory Data Analysis (EDA)
 
-1. **Volatilidad alta:** Casino virtual es más impredecible que otros productos
-2. **Contacto preventivo:** Necesita predecir ANTES de que se vaya (7 días adelantado)
-3. **Limitación operativa:** Equipo comercial solo puede contactar 50 jugadores/día máximo
-4. **Impacto financiero:** 1% reducción de churn = +S/ 80K/mes en VLT
+### Real Churn by Channel
 
----
+| Channel | Active | Churn Rate | Volatility | Insight |
+|---------|--------|-----------|------------|---------|
+| App Mobile | 4,200 | 68.2% | High | Casual users |
+| Web | 3,100 | 62.1% | Medium | More sticky |
+| Live Desktop | 2,800 | 58.9% | Low | Committed |
+| Phone | 1,900 | 71.3% | Very High | Minimal sample |
 
-## Análisis Exploratorio de Datos (EDA)
+### Model Comparison
 
-### Churn Real por Canal (Últimas 8 semanas)
+| Model | AUC | Time | Difference |
+|--------|-----|--------|-----------|
+| **LightGBM** | **0.8745** | **23 sec** | **SELECTED** |
+| XGBoost | 0.8698 | 67 sec | -0.0047 |
+| RandomForest | 0.8612 | 54 sec | -0.0133 |
+| Ridge | 0.8321 | 3 sec | Insufficient |
 
-| Canal | Jugadores Activos | Churn Rate | Variabilidad | Insight |
-|-------|-------------------|-----------|-------------|---------|
-| App Mobile | 4,200 | 68.2% | Alta | Mayor volatilidad, usuarios casuales |
-| Web | 3,100 | 62.1% | Media | Más sticky que mobile |
-| Vivo Desktop | 2,800 | 58.9% | Baja | Usuarios más comprometidos |
-| Teléfono | 1,900 | 71.3% | Muy Alta | Mínima muestra, test users |
+**Decision:** LightGBM for AUC + speed (3x faster than XGBoost).
 
-**Conclusión:** App mobile más volátil (68.2%), desktop más estable (58.9%). Modelo debe ser más conservador en mobile.
+### Weekly Performance (Temporal Validation)
 
-### Comparación de Modelos (8 semanas promedio)
+| Week | Churn | AUC | Precision | Coverage |
+|--------|-------|-----|-----------|-----------|
+| 1-8 | ~63-69% | 0.851-0.876 | 87.8-91.2% | 68-73% |
+| **Average** | **66.0%** | **0.8745** | **89.2%** | **71.4%** |
 
-| Modelo | AUC | Tiempo Training | Nota |
-|--------|-----|-----------------|------|
-| **LightGBM** | **0.8745** | **23 seg** | **ELEGIDO** - Mejor AUC, más rápido |
-| XGBoost | 0.8698 | 67 seg | Comparable AUC pero lento |
-| RandomForest | 0.8612 | 54 seg | -0.13 AUC vs LightGBM |
-| Ridge | 0.8321 | 3 seg | Muy simple, insuficiente |
-
-**Decisión:** LightGBM ganó por AUC + velocidad. Diferencia vs XGBoost solo 0.0047 (marginal), pero 3x más rápido.
-
-### Performance por Semana (Validación Temporal)
-
-| Semana | Churn Real | AUC | Precisión Críticos | Cobertura | Observación |
-|--------|-----------|-----|-------------------|-----------|-------------|
-| 1 | 63.5% | 0.851 | 89.2% | 72.1% | Normal |
-| 2 | 67.2% | 0.864 | 88.5% | 71.8% | Churn alto, modelo ajusta bien |
-| 3 | 64.1% | 0.859 | 89.1% | 70.5% | Vuelve a media |
-| 4 | 68.9% | 0.876 | 91.2% | 73.2% | Churn extremo, AUC sube |
-| 5 | 65.3% | 0.868 | 87.8% | 68.1% | Normal |
-| 6 | 66.7% | 0.872 | 89.5% | 72.6% | Estable |
-| 7 | 64.8% | 0.875 | 88.9% | 71.9% | Semanal típica |
-| 8 | 67.1% | 0.874 | 90.1% | 72.4% | Semanal típica |
-| **PROMEDIO** | **66.0%** | **0.8745** | **89.2%** | **71.4%** | **Performance real en producción** |
-
-**Insight:** AUC correlaciona con churn real → modelo adaptativo. Semanas de churn alto (4, 2) tienen AUC más alto.
-
----
-
-## Solución Implementada
-
-### Arquitectura Temporal (Anti-Fuga de Datos)
+## Temporal Architecture (Anti-Leakage)
 
 ```
-CORRECTO (sin overlap):
-Corte: Domingo anterior (ej: 2026-10-18)
-Variables: Actividad hasta sábado 2026-10-18 (7 días antes predicción)
-Etiqueta: ¿Apostó lunes-domingo 2026-10-25? (7 días DESPUÉS)
-Predicción: Martes 2026-10-20 → Contactos esa semana
+Cut-off: Previous Sunday (ex: 2026-10-18)
+Variables: Activity until Saturday (7 days BEFORE prediction)
+Label: Did they bet next week? (7 days AFTER)
+Prediction: Tuesday → Contacts that week
 ```
 
-Este diseño **previene fuga de datos** (etiqueta mira futuro, variables miran pasado).
+## Features (28 total)
 
-### Modelo: LightGBM
+| Category | Examples | Qty |
+|----------|----------|-----|
+| Recency | Days since last session, win, deposit | 4 |
+| Frequency | Spins 7d/14d, different games, sessions | 5 |
+| Monetary | Volume 2w/4w, net gain, win/loss ratio | 6 |
+| Behavior | Favorite time, volatility, losing streaks | 7 |
+| KYC | Verification, account age | 2 |
+| Additional | VIP, deposit method, balance, withdrawal ratio | 4 |
+
+## Model: LightGBM
 
 ```python
+# LightGBM classifier with balanced class weights
 LGBMClassifier(
     num_leaves=31,
     n_estimators=300,
     learning_rate=0.05,
-    class_weight="balanced",  # Maneja desbalance 66% churn
+    class_weight="balanced",  # Handles 66% churn
     num_threads=8
 )
 ```
 
-- Entrenamiento: 70% | Validation: 15% | Test: 15%
-- Cross-validation: Walk-forward temporal (21 semanas)
-- Métrica: AUC en test set (no temporal leak)
+Train 70% | Validation 15% | Test 15% | Walk-forward 21 weeks
 
-### Features (28 totales)
+## Risk Segmentation Results
 
-**Recency (4):**
-- Días desde última sesión
-- Días desde última victoria
-- Días desde último giro
-- Días desde último depósito
+| Score | Segment | Players | Action |
+|-------|----------|---------|--------|
+| < 0.35 | Low | ~4,200 | No contact |
+| 0.35-0.60 | Medium | ~3,100 | Auto monitoring |
+| 0.60-0.80 | High | ~2,800 | Email incentive |
+| > 0.80 | **Critical** | **~2,100** | **Priority contact** |
 
-**Frequency (5):**
-- Giros en 7 días
-- Giros en 14 días
-- Número de juegos diferentes
-- Sesiones únicas
-- Días activos en 30d
-
-**Monetary (6):**
-- Volumen jugado últimas 2 semanas
-- Volumen jugado últimas 4 semanas
-- Ganancia neta
-- Ratio victoria/derrota
-- Giro promedio
-- Giro máximo
-
-**Comportamiento (7):**
-- Horario favorito (matutino/vespertino/nocturno)
-- Día favorito de semana
-- Volatilidad de giro (desv estándar)
-- Concentración en 1 juego (%)
-- Tasa de sesiones cortas (<5 min)
-- Patrón de pérdidas recientes
-- Racha de derrotas consecutivas
-
-**KYC (2):**
-- Estado de verificación (0/1)
-- Antigüedad de cuenta (días)
-
-**Adicionales (4):**
-- VIP status
-- Método depósito predominante
-- Saldo promedio disponible
-- Ratio retiro/depósito
-
----
-
-## Resultados
-
-### Segmentación de Riesgo
-
-| Score | Segmento | Jugadores Esperados | Acción |
-|-------|----------|-------------------|--------|
-| < 0.35 | Bajo | ~4,200 | Sin contacto |
-| 0.35-0.60 | Medio | ~3,100 | Monitoreo automático |
-| 0.60-0.80 | Alto | ~2,800 | Email con oferta incentivo |
-| > 0.80 | **Crítico** | **~2,100** | **Contacto prioridad** |
-
-**Uso:** Top 50 críticos cada lunes → 50 contactos/día disponibles
-
----
-
-## Cómo Ejecutarlo
-
-### En Airflow
+## Execution
 
 ```bash
+# Airflow
 airflow dags trigger dag_churn_gaming_semanal
-```
 
-Cada lunes 08:00 Lima (13:00 UTC)
-
-### Manualmente
-
-```bash
-ssh olimpo-ml
-source ~/ml-env/bin/activate
+# Manual
 python ~/olimpo/churn_gaming/train_predict.py
+
+# Check critical
+SELECT * FROM ml_score_risk.churn_gaming_predicciones
+WHERE churn_score > 0.80 AND run_date = CURRENT_DATE
+ORDER BY churn_score DESC LIMIT 50;
 ```
 
-### Consultar Críticos
+## Limitations
 
-```sql
-SELECT player, churn_score, recency_dias, volumen_2w
-FROM ml_score_risk.churn_gaming_predicciones
-WHERE run_date = CURRENT_DATE
-  AND churn_score > 0.80
-ORDER BY churn_score DESC
-LIMIT 50;
-```
+1. Manual validation of predictions
+2. Very high base churn (66%)
+3. Channel volatility
+4. Recent deposit/withdrawal impact
+5. Operational constraint: 50 contacts/day
 
----
+## Next Steps
 
-## Próximos Pasos
+- A/B test: contact impact on conversion
+- Redshift for daily update (vs weekly)
+- Dynamic threshold by capacity
+- Feature importance for churn drivers
 
-- Validar impacto de contacto en conversión (A/B test)
-- Incorporar datos Redshift (últimas 24h) para update más frecuente
-- Threshold dinámico por capacidad operativa disponible
-- Feature importance para entender drivers de churn
